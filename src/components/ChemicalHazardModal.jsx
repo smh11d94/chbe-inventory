@@ -1,16 +1,59 @@
 import React, { useState, useEffect } from 'react';
 
-// Map PubChem pictogram URLs to local file names
-const GHS_PICTOGRAMS = {
-  'GHS01': '/ghs-pictograms/GHS01.svg', // Explosive
-  'GHS02': '/ghs-pictograms/GHS02.svg', // Flammable
-  'GHS03': '/ghs-pictograms/GHS03.svg', // Oxidizing
-  'GHS04': '/ghs-pictograms/GHS04.svg', // Gas under pressure
-  'GHS05': '/ghs-pictograms/GHS05.svg', // Corrosive
-  'GHS06': '/ghs-pictograms/GHS06.svg', // Toxic
-  'GHS07': '/ghs-pictograms/GHS07.svg', // Harmful/Irritant
-  'GHS08': '/ghs-pictograms/GHS08.svg', // Health hazard
-  'GHS09': '/ghs-pictograms/GHS09.svg'  // Environmental hazard
+// Map of hazard phrases to GHS pictograms
+const HAZARD_TO_GHS = {
+  // Explosive hazards -> GHS01
+  'explosive': 'GHS01',
+  'explosiv': 'GHS01',
+  'unstable explosive': 'GHS01',
+  
+  // Flammable hazards -> GHS02
+  'flammable': 'GHS02',
+  'pyrophoric': 'GHS02',
+  'catches fire': 'GHS02',
+  'heating may cause fire': 'GHS02',
+  
+  // Oxidizing hazards -> GHS03
+  'oxidizing': 'GHS03',
+  'oxidising': 'GHS03',
+  'may cause fire or explosion': 'GHS03',
+  'may intensify fire': 'GHS03',
+  
+  // Compressed gas -> GHS04
+  'contains gas under pressure': 'GHS04',
+  'compressed gas': 'GHS04',
+  'liquefied gas': 'GHS04',
+  'dissolved gas': 'GHS04',
+  
+  // Corrosive -> GHS05
+  'corrosive': 'GHS05',
+  'causes severe skin burns': 'GHS05',
+  'causes serious eye damage': 'GHS05',
+  
+  // Toxic -> GHS06
+  'fatal': 'GHS06',
+  'toxic': 'GHS06',
+  
+  // Harmful/Irritant -> GHS07
+  'harmful': 'GHS07',
+  'irritant': 'GHS07',
+  'irritating': 'GHS07',
+  'may cause respiratory irritation': 'GHS07',
+  'may cause drowsiness': 'GHS07',
+  'may cause allergic skin reaction': 'GHS07',
+  
+  // Health hazard -> GHS08
+  'carcinogen': 'GHS08',
+  'mutagen': 'GHS08',
+  'reproductive toxicity': 'GHS08',
+  'respiratory sensitizer': 'GHS08',
+  'target organ toxicity': 'GHS08',
+  'aspiration hazard': 'GHS08',
+  
+  // Environmental hazard -> GHS09
+  'aquatic': 'GHS09',
+  'environmental': 'GHS09',
+  'hazardous to the aquatic': 'GHS09'
 };
 
 const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
@@ -24,76 +67,28 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
       
       setLoading(true);
       setError(null);
-
       try {
-        // Get CID first
-        const cidUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(chemical.name)}/property/IUPACName/JSON`;
-        const cidResponse = await fetch(cidUrl);
+        // First get the CID
+        const cidResponse = await fetch(
+          `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(chemical.name)}/cids/JSON`
+        );
         const cidData = await cidResponse.json();
         
-        if (!cidData?.PropertyTable?.Properties?.[0]?.CID) {
+        if (!cidData.IdentifierList?.CID?.[0]) {
           throw new Error('Chemical not found in PubChem');
         }
 
-        const cid = cidData.PropertyTable.Properties[0].CID;
+        const cid = cidData.IdentifierList.CID[0];
 
-        // Get GHS data
-        const ghs_url = `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=GHS+Classification`;
-        const ghsResponse = await fetch(ghs_url);
-        const ghsData = await ghsResponse.json();
+        // Get hazard information
+        const hazardResponse = await fetch(
+          `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=GHS+Classification`
+        );
+        const hazardData = await hazardResponse.json();
 
-        // Process hazard data
-        const hazards = {
-          pictograms: new Set(), // Using Set to avoid duplicates
-          warnings: new Set()    // Using Set to avoid duplicates
-        };
-
-        // Function to extract GHS number from PubChem URL
-        const extractGHSNumber = (url) => {
-          const match = url.match(/GHS(\d+)\.svg/);
-          return match ? `GHS${match[1].padStart(2, '0')}` : null;
-        };
-
-        // Navigate through sections
-        if (ghsData?.Record?.Section) {
-          ghsData.Record.Section.forEach(section => {
-            if (section.TOCHeading.includes('GHS')) {
-              section.Section?.forEach(subSection => {
-                // Get pictograms
-                if (subSection.TOCHeading.includes('Pictogram')) {
-                  subSection.Information?.forEach(info => {
-                    info.Value?.StringWithMarkup?.forEach(item => {
-                      item.Markup?.forEach(markup => {
-                        if (markup.URL) {
-                          const ghsNumber = extractGHSNumber(markup.URL);
-                          if (ghsNumber && GHS_PICTOGRAMS[ghsNumber]) {
-                            hazards.pictograms.add(ghsNumber);
-                          }
-                        }
-                      });
-                    });
-                  });
-                }
-                
-                // Get hazard statements
-                if (subSection.TOCHeading.includes('Hazard')) {
-                  subSection.Information?.forEach(info => {
-                    info.Value?.StringWithMarkup?.forEach(item => {
-                      if (item.String) {
-                        hazards.warnings.add(item.String);
-                      }
-                    });
-                  });
-                }
-              });
-            }
-          });
-        }
-
-        setHazardInfo({
-          pictograms: Array.from(hazards.pictograms),
-          warnings: Array.from(hazards.warnings)
-        });
+        // Process the hazard data
+        const hazards = processHazardData(hazardData);
+        setHazardInfo(hazards);
       } catch (err) {
         console.error('Error fetching hazard info:', err);
         setError(err.message);
@@ -104,6 +99,52 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
 
     fetchHazardInfo();
   }, [isOpen, chemical]);
+
+  const processHazardData = (data) => {
+    const hazards = {
+      pictograms: new Set(),
+      warnings: new Set()
+    };
+
+    try {
+      // Function to check text against hazard mappings
+      const findMatchingPictograms = (text) => {
+        const lowerText = text.toLowerCase();
+        for (const [hazardPhrase, ghsCode] of Object.entries(HAZARD_TO_GHS)) {
+          if (lowerText.includes(hazardPhrase)) {
+            hazards.pictograms.add(ghsCode);
+          }
+        }
+      };
+
+      // Navigate through sections to find hazard statements
+      const sections = data.Record.Section;
+      sections.forEach(section => {
+        if (section.TOCHeading.includes('GHS')) {
+          section.Section?.forEach(subSection => {
+            if (subSection.TOCHeading.includes('Hazard')) {
+              subSection.Information?.forEach(info => {
+                info.Value?.StringWithMarkup?.forEach(item => {
+                  if (item.String) {
+                    hazards.warnings.add(item.String);
+                    // Check the hazard statement for matching pictograms
+                    findMatchingPictograms(item.String);
+                  }
+                });
+              });
+            }
+          });
+        }
+      });
+    } catch (e) {
+      console.error('Error processing hazard data:', e);
+    }
+
+    return {
+      pictograms: Array.from(hazards.pictograms),
+      warnings: Array.from(hazards.warnings)
+    };
+  };
 
   if (!isOpen) return null;
 
@@ -128,7 +169,7 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
 
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-            Error: {error}
+            {error}
           </div>
         )}
 
@@ -141,10 +182,9 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
                   {hazardInfo.pictograms.map((ghsNumber) => (
                     <div key={ghsNumber} className="border rounded p-2 bg-white">
                       <img
-                        src={GHS_PICTOGRAMS[ghsNumber]}
+                        src={`/ghs-pictograms/${ghsNumber}.svg`}
                         alt={`GHS pictogram ${ghsNumber}`}
                         className="w-24 h-24 object-contain"
-                        title={getGHSDescription(ghsNumber)}
                       />
                     </div>
                   ))}
@@ -162,34 +202,18 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
                 </ul>
               </div>
             )}
+          </div>
+        )}
 
-            {(!hazardInfo.pictograms.length && !hazardInfo.warnings.length) && (
-              <div className="text-gray-600 text-center py-4">
-                <p>No hazard information available for this chemical.</p>
-                <p className="text-sm mt-2">Please consult the Safety Data Sheet (SDS) for safety information.</p>
-              </div>
-            )}
+        {!loading && !error && (!hazardInfo || (!hazardInfo.pictograms?.length && !hazardInfo.warnings?.length)) && (
+          <div className="text-gray-600 text-center py-4">
+            <p>No hazard information available for this chemical.</p>
+            <p className="text-sm mt-2">Please consult the Safety Data Sheet (SDS) for safety information.</p>
           </div>
         )}
       </div>
     </div>
   );
-};
-
-// Helper function to get descriptions for pictograms
-const getGHSDescription = (ghsNumber) => {
-  const descriptions = {
-    'GHS01': 'Explosive',
-    'GHS02': 'Flammable',
-    'GHS03': 'Oxidizing',
-    'GHS04': 'Gas Under Pressure',
-    'GHS05': 'Corrosive',
-    'GHS06': 'Acute Toxicity',
-    'GHS07': 'Harmful/Irritant',
-    'GHS08': 'Health Hazard',
-    'GHS09': 'Environmental Hazard'
-  };
-  return descriptions[ghsNumber] || ghsNumber;
 };
 
 export default ChemicalHazardModal;
