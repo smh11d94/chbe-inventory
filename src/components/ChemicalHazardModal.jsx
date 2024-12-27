@@ -47,19 +47,28 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
         // Log the structure of the XML to inspect
         console.log('Parsed XML:', xmlDoc);
 
-        // Step 4: Extract SVG URLs
+        // Step 4: Extract SVG URLs under the GHS Classification section
         const svgFiles = [];
-        const informationElements = xmlDoc.getElementsByTagName('Information');
-        for (let i = 0; i < informationElements.length; i++) {
-          const info = informationElements[i];
-          const name = info.getElementsByTagName('Name')[0]?.textContent;
-          const value = info.getElementsByTagName('Value')[0]?.textContent;
+        const sections = xmlDoc.getElementsByTagName('Section');
+        for (let i = 0; i < sections.length; i++) {
+          const section = sections[i];
+          const tocHeading = section.getElementsByTagName('TOCHeading')[0]?.textContent;
           
-          // Look for the 'GHS' SVG URLs in the value field
-          if (name && name.includes('Pictogram(s)') && value) {
-            const urlMatch = value.match(/https:\/\/pubchem\.ncbi\.nlm\.nih\.gov\/images\/ghs\/GHS\d{2}\.svg/g);
-            if (urlMatch) {
-              svgFiles.push(...urlMatch);
+          // Look for the section with 'GHS Classification' heading
+          if (tocHeading === 'GHS Classification') {
+            const informationElements = section.getElementsByTagName('Information');
+            for (let j = 0; j < informationElements.length; j++) {
+              const info = informationElements[j];
+              const name = info.getElementsByTagName('Name')[0]?.textContent;
+              const value = info.getElementsByTagName('Value')[0]?.textContent;
+              
+              // Look for the 'GHS' SVG URLs in the value field
+              if (name && name.includes('Pictogram(s)') && value) {
+                const urlMatch = value.match(/https:\/\/pubchem\.ncbi\.nlm\.nih\.gov\/images\/ghs\/GHS\d{2}\.svg/g);
+                if (urlMatch) {
+                  svgFiles.push(...urlMatch);
+                }
+              }
             }
           }
         }
