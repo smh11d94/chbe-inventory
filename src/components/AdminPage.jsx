@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { API } from 'aws-amplify';
 import AddChemicalModal from './modals/AddChemicalModal';
 import RestockModal from './modals/RestockModal';
-
+console.log('API object:', API);
 const AdminPage = () => {
   const [chemicals, setChemicals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -14,65 +14,47 @@ const AdminPage = () => {
   const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
 
   useEffect(() => {
+    console.log('AdminPage mounted, fetching chemicals...');
     fetchChemicals();
   }, []);
 
   const fetchChemicals = async () => {
-    try {
-      setLoading(true);
-      console.log('Fetching chemicals...');
-      const response = await API.get('chbe-inventory-api', '/inventory');
-      console.log('Raw response:', response);
+  try {
+    setLoading(true);
+    const response = await API.get('chbe-inventory-api', '/inventory');
+    
+    if (response.body) {
+      const parsedBody = typeof response.body === 'string' 
+        ? JSON.parse(response.body) 
+        : response.body;
       
-      // Parse the response body if it's a string
-      let data;
-      if (typeof response.body === 'string') {
-        try {
-          data = JSON.parse(response.body);
-          console.log('Parsed data:', data);
-        } catch (parseError) {
-          console.error('Error parsing response:', parseError);
-          throw new Error('Invalid data format received');
-        }
-      } else {
-        data = response.body || [];
+      if (parsedBody.data) {
+        const cleanData = parsedBody.data.replace(/\\r\\n/g, '\n');
+        const rows = cleanData.split('\n');
+        const headers = rows[0].split(',');
+        
+        const data = rows.slice(1)
+          .filter(row => row.trim())
+          .map(row => {
+            const values = row.split(',');
+            const rowObject = {};
+            headers.forEach((header, index) => {
+              const cleanHeader = header.trim().replace(/\\r/g, '');
+              rowObject[cleanHeader] = values[index]?.trim() || '';
+            });
+            return rowObject;
+          });
+        
+        setChemicals(data);
       }
-
-      // Handle different data structures
-      let chemicalsArray;
-      if (Array.isArray(data)) {
-        chemicalsArray = data;
-      } else if (Array.isArray(data.data)) {
-        chemicalsArray = data.data;
-      } else if (typeof data === 'object' && data !== null) {
-        // If it's an object, try to convert it to an array
-        chemicalsArray = Object.values(data);
-      } else {
-        chemicalsArray = [];
-      }
-
-      console.log('Chemical array before setting:', chemicalsArray);
-      // Validate each chemical object
-      chemicalsArray = chemicalsArray.filter(chemical => {
-        const isValid = chemical && 
-                       typeof chemical === 'object' && 
-                       typeof chemical.name === 'string' &&
-                       typeof chemical.location === 'string';
-        if (!isValid) {
-          console.warn('Invalid chemical object found:', chemical);
-        }
-        return isValid;
-      });
-      console.log('Final chemicals array:', chemicalsArray);
-      setChemicals(chemicalsArray);
-    } catch (err) {
-      console.error('Error fetching chemicals:', err);
-      setError(`Failed to load chemical inventory: ${err.message}`);
-      setChemicals([]);
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (err) {
+    console.error('Error fetching chemicals:', err);
+    setError('Failed to load chemical inventory');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleAddChemical = async (newChemical) => {
     try {
