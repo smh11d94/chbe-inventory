@@ -64,7 +64,8 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
               if (name && name.includes('Pictogram(s)') && value) {
                 const urlMatch = value.match(/https:\/\/pubchem\.ncbi\.nlm\.nih\.gov\/images\/ghs\/GHS\d{2}\.svg/g);
                 if (urlMatch) {
-                  svgFiles.push(...urlMatch);
+                  const extraText = info.getElementsByTagName('Markup')[0]?.getAttribute('Extra');
+                  svgFiles.push({ url: urlMatch[0], extra: extraText });
                 }
               }
 
@@ -77,7 +78,8 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
         }
 
         // Remove duplicates by converting to a Set and back to an array
-        const uniqueSvgFiles = [...new Set(svgFiles)];
+        const uniqueSvgFiles = [...new Set(svgFiles.map(item => item.url))]
+          .map(url => svgFiles.find(item => item.url === url));
 
         setSvgFiles(uniqueSvgFiles);
       } catch (err) {
@@ -123,10 +125,17 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
             {svgFiles.length > 0 && (
               <div>
                 <h3 className="font-semibold mb-3">GHS Classification Pictograms</h3>
-                <div className="space-y-4">
-                  {svgFiles.map((svgUrl, index) => (
-                    <div key={index} className="flex justify-center">
-                      <img src={svgUrl} alt={`GHS Classification ${index + 1}`} className="max-w-full h-auto" />
+                <div className="grid grid-cols-3 gap-4">
+                  {svgFiles.map((file, index) => (
+                    <div key={index} className="relative group">
+                      <img 
+                        src={file.url} 
+                        alt={`GHS Classification ${index + 1}`} 
+                        className="max-w-full h-auto"
+                      />
+                      <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 flex justify-center items-center text-white text-sm p-2">
+                        {file.extra}
+                      </div>
                     </div>
                   ))}
                 </div>
