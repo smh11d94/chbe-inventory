@@ -47,20 +47,19 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
         // Log the structure of the XML to inspect
         console.log('Parsed XML:', xmlDoc);
 
-        // Look for the correct section under GHS Classification
+        // Step 4: Extract SVG URLs
         const svgFiles = [];
-        const tocHeadings = xmlDoc.getElementsByTagName('TOCHeading');
-        for (let i = 0; i < tocHeadings.length; i++) {
-          const tocHeading = tocHeadings[i];
-          if (tocHeading.textContent === 'GHS Classification') {
-            // Now look for any files or images under this heading
-            const files = tocHeading.parentElement.getElementsByTagName('File');
-            for (let j = 0; j < files.length; j++) {
-              const file = files[j];
-              const fileUrl = file.textContent;
-              if (fileUrl && fileUrl.endsWith('.svg')) {
-                svgFiles.push(fileUrl);
-              }
+        const informationElements = xmlDoc.getElementsByTagName('Information');
+        for (let i = 0; i < informationElements.length; i++) {
+          const info = informationElements[i];
+          const name = info.getElementsByTagName('Name')[0]?.textContent;
+          const value = info.getElementsByTagName('Value')[0]?.textContent;
+          
+          // Look for the 'GHS' SVG URLs in the value field
+          if (name && name.includes('Pictogram(s)') && value) {
+            const urlMatch = value.match(/https:\/\/pubchem\.ncbi\.nlm\.nih\.gov\/images\/ghs\/GHS\d{2}\.svg/g);
+            if (urlMatch) {
+              svgFiles.push(...urlMatch);
             }
           }
         }
