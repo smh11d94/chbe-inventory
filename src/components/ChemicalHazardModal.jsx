@@ -3,8 +3,8 @@ import React, { useState, useEffect } from 'react';
 const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [hazardInfo, setHazardInfo] = useState(null);
   const [svgFiles, setSvgFiles] = useState([]);
+  const [ghsUrl, setGhsUrl] = useState('');
 
   useEffect(() => {
     const fetchHazardInfo = async () => {
@@ -13,6 +13,7 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
       setLoading(true);
       setError(null);
       setSvgFiles([]);  // Reset the SVG files list
+      setGhsUrl(''); // Reset the GHS URL
 
       try {
         // Step 1: Get CID
@@ -40,13 +41,10 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
         const ghsData = await ghsResponse.text();  // Get XML as text
         console.log('GHS XML Data:', ghsData);  // Log the XML to inspect
 
-        // Step 3: Parse XML to extract SVG file URLs
+        // Step 3: Parse XML to extract SVG file URLs and the "Learn more" link
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(ghsData, 'application/xml');
         
-        // Log the structure of the XML to inspect
-        console.log('Parsed XML:', xmlDoc);
-
         // Step 4: Extract SVG URLs under the GHS Classification section
         const svgFiles = [];
         const sections = xmlDoc.getElementsByTagName('Section');
@@ -69,43 +67,19 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
                   svgFiles.push(...urlMatch);
                 }
               }
+
+              // Find the "Learn more" link
+              if (value && value.includes('https://pubchem.ncbi.nlm.nih.gov/ghs/')) {
+                setGhsUrl(value);
+              }
             }
           }
         }
 
-        setSvgFiles(svgFiles);
+        // Remove duplicates by converting to a Set and back to an array
+        const uniqueSvgFiles = [...new Set(svgFiles)];
 
-        // Optional: Process and extract hazard statements if needed
-        const processHazards = (xmlDoc) => {
-          const hazards = {
-            statements: [],
-            signalWord: null
-          };
-
-          const sections = xmlDoc.getElementsByTagName('Section');
-          for (let i = 0; i < sections.length; i++) {
-            const section = sections[i];
-            const heading = section.getElementsByTagName('TOCHeading')[0]?.textContent;
-
-            if (heading === 'GHS Classification') {
-              const information = section.getElementsByTagName('Information');
-              for (let j = 0; j < information.length; j++) {
-                const info = information[j];
-                const text = info.textContent;
-                if (text.startsWith('Signal Word:')) {
-                  hazards.signalWord = text.replace('Signal Word:', '').trim();
-                } else if (text.includes('H')) {
-                  hazards.statements.push(text);
-                }
-              }
-            }
-          }
-
-          return hazards;
-        };
-
-        const hazards = processHazards(xmlDoc);
-        setHazardInfo(hazards);
+        setSvgFiles(uniqueSvgFiles);
       } catch (err) {
         console.error('Error fetching hazard info:', err);
         setError(err.message);
@@ -144,55 +118,34 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
           </div>
         )}
 
-        {hazardInfo && !loading && (
+        {(!loading && !error) && (
           <div className="space-y-4">
-            {hazardInfo.signalWord && (
-              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                <div className="flex">
-                  <div className="ml-3">
-                    <p className="text-sm text-yellow-700">
-                      Signal Word: <span className="font-medium">{hazardInfo.signalWord}</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {hazardInfo.statements.length > 0 && (
+            {svgFiles.length > 0 && (
               <div>
-                <h3 className="font-semibold mb-3">Hazard Statements</h3>
-                <ul className="list-disc pl-5 space-y-2">
-                  {hazardInfo.statements.map((statement, index) => (
-                    <li key={index} className="text-sm">{statement}</li>
+                <h3 className="font-semibold mb-3">GHS Classification Pictograms</h3>
+                <div className="space-y-4">
+                  {svgFiles.map((svgUrl, index) => (
+                    <div key={index} className="flex justify-center">
+                      <img src={svgUrl} alt={`GHS Classification ${index + 1}`} className="max-w-full h-auto" />
+                    </div>
                   ))}
-                </ul>
-              </div>
-            )}
-
-            {(!hazardInfo.statements.length && !hazardInfo.signalWord) && (
-              <div className="text-gray-600 text-center">
-                <p>No GHS hazard information available for this chemical.</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {svgFiles.length > 0 && !loading && (
-          <div className="mt-4">
-            <h3 className="font-semibold mb-3">GHS Classification SVGs</h3>
-            <div className="space-y-4">
-              {svgFiles.map((svgUrl, index) => (
-                <div key={index} className="flex justify-center">
-                  <img src={svgUrl} alt={`GHS Classification ${index + 1}`} className="max-w-full h-auto" />
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+            )}
 
-        {!loading && !error && !hazardInfo && !svgFiles.length && (
-          <div className="text-gray-600 text-center py-4">
-            <p>No hazard information or SVGs available for this chemical.</p>
+            {ghsUrl && (
+              <div className="mt-4 text-center">
+                <a href={ghsUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
+                  Learn more about GHS Classification
+                </a>
+              </div>
+            )}
+
+            {!svgFiles.length && !ghsUrl && (
+              <div className="text-gray-600 text-center py-4">
+                <p>No GHS hazard information or pictograms available for this chemical.</p>
+              </div>
+            )}
           </div>
         )}
       </div>
