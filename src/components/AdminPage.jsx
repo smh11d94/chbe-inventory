@@ -56,20 +56,41 @@ const AdminPage = () => {
   }
 };
 
-  const handleAddChemical = async (newChemical) => {
-    try {
-      console.log('Adding new chemical:', newChemical);
-      const response = await API.post('chbe-inventory-api', '/inventory', {
-        body: newChemical
-      });
-      console.log('Add chemical response:', response);
+const handleAddChemical = async (newChemical) => {
+  try {
+    console.log('Adding new chemical:', newChemical);
+    
+    // Format the data to match the API expectations
+    const chemicalData = {
+      name: newChemical.name,
+      formula: newChemical.formula || '',
+      location: newChemical.location,
+      current_quantity: newChemical.current_quantity,
+      unit: newChemical.unit || 'mL',
+      minimum_quantity: newChemical.minimum_quantity || '0',
+      hazard_level: newChemical.hazard_level || 'Low'
+    };
+
+    console.log('Sending data to API:', chemicalData);
+
+    const response = await API.post('chbe-inventory-api', '/inventory', {
+      body: chemicalData  // Amplify's API.post will handle the JSON stringification
+    });
+    
+    console.log('Add chemical response:', response);
+    
+    if (response.statusCode === 200) {
       setIsAddModalOpen(false);
-      await fetchChemicals();
-    } catch (err) {
-      console.error('Error adding chemical:', err);
-      setError(`Failed to add new chemical: ${err.message}`);
+      await fetchChemicals(); // Refresh the list
+      setError(null); // Clear any existing errors
+    } else {
+      setError('Failed to add chemical: ' + (response.body?.message || 'Unknown error'));
     }
-  };
+  } catch (err) {
+    console.error('Error adding chemical:', err);
+    setError(`Failed to add new chemical: ${err.message}`);
+  }
+};
 
   const handleRestock = async (chemicalId, amount) => {
     try {
