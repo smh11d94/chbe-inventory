@@ -40,20 +40,22 @@ const ChemicalInventory = () => {
 
       // Parse CSV data
       try {
-        const rows = parsedBody.data.split('\\r\\n');
+        const cleanData = parsedBody.data.replace(/\\r\\n/g, '\n');
+        const rows = cleanData.split('\n');
         console.log('4. Split rows:', rows);
 
         const headers = rows[0].split(',');
         console.log('5. Headers:', headers);
 
-        const data = rows.slice(1).map(row => {
+        const data = rows.slice(1).filter(row => row.trim()).map(row => {
           const values = row.split(',');
           console.log('6. Processing row:', row);
           console.log('7. Split values:', values);
           
           const rowObject = {};
           headers.forEach((header, index) => {
-            rowObject[header.trim()] = values[index]?.trim() || '';
+            const cleanHeader = header.trim().replace(/\\r/g, '');
+            rowObject[cleanHeader] = values[index]?.trim() || '';
           });
           console.log('8. Created row object:', rowObject);
           return rowObject;
