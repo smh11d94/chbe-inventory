@@ -1,11 +1,81 @@
 import React, { useState, useEffect } from 'react';
 import { API } from 'aws-amplify';
 
+const UsageModal = ({ chemical, isOpen, onClose, onConfirm }) => {
+  const [amount, setAmount] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const usageAmount = Number(amount);
+    
+    if (isNaN(usageAmount) || usageAmount <= 0) {
+      setError('Please enter a valid positive number');
+      return;
+    }
+
+    if (usageAmount > chemical.current_quantity) {
+      setError(`Not enough ${chemical.name} available. Current quantity: ${chemical.current_quantity} ${chemical.unit}`);
+      return;
+    }
+
+    onConfirm(usageAmount);
+    setAmount('');
+    setError('');
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex justify-center items-center">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <h2 className="text-xl font-bold mb-4">Record Usage</h2>
+        <p className="mb-4">How much {chemical.name} are you using today?</p>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <div className="flex items-center space-x-2">
+              <input
+                type="number"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="flex-1 p-2 border rounded"
+                placeholder={`Enter amount (${chemical.unit})`}
+              />
+              <span className="text-gray-600">{chemical.unit}</span>
+            </div>
+            {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
+          </div>
+
+          <div className="flex justify-end space-x-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              Confirm
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const ChemicalInventory = () => {
   const [chemicals, setChemicals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedChemical, setSelectedChemical] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     fetchChemicals();
@@ -14,66 +84,63 @@ const ChemicalInventory = () => {
   const fetchChemicals = async () => {
     try {
       setLoading(true);
-      console.log('1. Starting API call...');
       const response = await API.get('chbe-inventory-api', '/inventory');
-      console.log('2. Raw API Response:', response);
       
-      if (!response) {
-        throw new Error('No response from API');
-      }
-
-      let parsedBody;
-      try {
-        // If response.body is a string, parse it, otherwise use it as is
-        parsedBody = typeof response.body === 'string' 
-          ? JSON.parse(response.body)
+      if (response.body) {
+        const parsedBody = typeof response.body === 'string' 
+          ? JSON.parse(response.body) 
           : response.body;
-        console.log('3. Parsed body:', parsedBody);
-      } catch (e) {
-        console.error('Error parsing response body:', e);
-        throw new Error('Failed to parse API response');
-      }
-
-      if (!parsedBody.data) {
-        throw new Error('No data found in response');
-      }
-
-      // Parse CSV data
-      try {
-        const cleanData = parsedBody.data.replace(/\\r\\n/g, '\n');
-        const rows = cleanData.split('\n');
-        console.log('4. Split rows:', rows);
-
-        const headers = rows[0].split(',');
-        console.log('5. Headers:', headers);
-
-        const data = rows.slice(1).filter(row => row.trim()).map(row => {
-          const values = row.split(',');
-          console.log('6. Processing row:', row);
-          console.log('7. Split values:', values);
+        
+        if (parsedBody.data) {
+          const cleanData = parsedBody.data.replace(/\\r\\n/g, '\n');
+          const rows = cleanData.split('\n');
+          const headers = rows[0].split(',');
           
-          const rowObject = {};
-          headers.forEach((header, index) => {
-            const cleanHeader = header.trim().replace(/\\r/g, '');
-            rowObject[cleanHeader] = values[index]?.trim() || '';
+          const data = rows.slice(1).filter(row => row.trim()).map(row => {
+            const values = row.split(',');
+            const rowObject = {};
+            headers.forEach((header, index) => {
+              const cleanHeader = header.trim().replace(/\\r/g, '');
+              rowObject[cleanHeader] = values[index]?.trim() || '';
+            });
+            return rowObject;
           });
-          console.log('8. Created row object:', rowObject);
-          return rowObject;
-        });
-
-        console.log('9. Final parsed data:', data);
-        setChemicals(data);
-        setError(null);
-      } catch (e) {
-        console.error('Error parsing CSV data:', e);
-        throw new Error('Failed to parse CSV data');
+          
+          setChemicals(data);
+        }
       }
     } catch (err) {
-      console.error('Error in fetchChemicals:', err);
-      setError(err.message || 'Failed to load chemical inventory');
+      console.error('Error fetching chemicals:', err);
+      setError('Failed to load chemical inventory');
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateQuantity = async (chemical, usageAmount) => {
+    try {
+      const newQuantity = Number(chemical.current_quantity) - usageAmount;
+      await API.put('chbe-inventory-api', `/inventory/${chemical.chemical_id}`, {
+        body: { 
+          quantity: newQuantity,
+          usage: {
+            amount: usageAmount,
+            timestamp: new Date().toISOString(),
+            remaining: newQuantity
+          }
+        }
+      });
+      await fetchChemicals();
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error('Error updating quantity:', err);
+      setError('Failed to update quantity');
+    }
+  };
+
+  const handleUseClick = (chemical) => {
+    setSelectedChemical(chemical);
+    setIsModalOpen(true);
   };
 
   const filteredChemicals = chemicals.filter(chemical =>
@@ -81,8 +148,6 @@ const ChemicalInventory = () => {
     chemical.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     chemical.formula?.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  console.log('10. Filtered chemicals for rendering:', filteredChemicals);
 
   if (loading) {
     return (
@@ -123,48 +188,61 @@ const ChemicalInventory = () => {
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Unit</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Hazard Level</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Min. Quantity</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredChemicals.length === 0 ? (
-              <tr>
-                <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
-                  No chemicals found
+            {filteredChemicals.map((chemical) => (
+              <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
+                <td className="px-4 py-3">
+                  {chemical.sds_url ? (
+                    <a 
+                      href={chemical.sds_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      {chemical.name}
+                    </a>
+                  ) : (
+                    chemical.name
+                  )}
+                </td>
+                <td className="px-4 py-3 font-mono">{chemical.formula}</td>
+                <td className="px-4 py-3">{chemical.location}</td>
+                <td className="px-4 py-3">
+                  <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
+                    {chemical.current_quantity}
+                  </span>
+                </td>
+                <td className="px-4 py-3">{chemical.unit}</td>
+                <td className="px-4 py-3">{chemical.hazard_level}</td>
+                <td className="px-4 py-3">{chemical.minimum_quantity}</td>
+                <td className="px-4 py-3">
+                  <button
+                    onClick={() => handleUseClick(chemical)}
+                    className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                  >
+                    Use
+                  </button>
                 </td>
               </tr>
-            ) : (
-              filteredChemicals.map((chemical) => (
-                <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    {chemical.sds_url ? (
-                      <a 
-                        href={chemical.sds_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        {chemical.name}
-                      </a>
-                    ) : (
-                      chemical.name
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-mono">{chemical.formula}</td>
-                  <td className="px-4 py-3">{chemical.location}</td>
-                  <td className="px-4 py-3">
-                    <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
-                      {chemical.current_quantity}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">{chemical.unit}</td>
-                  <td className="px-4 py-3">{chemical.hazard_level}</td>
-                  <td className="px-4 py-3">{chemical.minimum_quantity}</td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       </div>
+
+      {selectedChemical && (
+        <UsageModal
+          chemical={selectedChemical}
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedChemical(null);
+          }}
+          onConfirm={(amount) => updateQuantity(selectedChemical, amount)}
+        />
+      )}
     </div>
   );
 };
