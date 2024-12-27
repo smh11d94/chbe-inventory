@@ -6,7 +6,11 @@ const ChemicalInventory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-
+// Temporary mock data for testing
+const MOCK_DATA = [
+  { id: '1', name: 'Test Chemical 1', quantity: 15, location: 'Lab A' },
+  { id: '2', name: 'Test Chemical 2', quantity: 8, location: 'Lab B' },
+];
   useEffect(() => {
     fetchChemicals();
   }, []);
@@ -14,8 +18,15 @@ const ChemicalInventory = () => {
   const fetchChemicals = async () => {
     try {
       setLoading(true);
-      const response = await API.get('chbe-inventory-api', '/inventory');
-      setChemicals(response);
+      console.log('Fetching chemicals...');
+      // Temporarily use mock data to verify rendering
+      console.log('Using mock data for testing');
+      setChemicals(MOCK_DATA);
+      
+      // Uncomment this when API is ready
+      // const response = await API.get('chbe-inventory-api', '/inventory');
+      // console.log('API Response:', response);
+      // setChemicals(response);
       setError(null);
     } catch (err) {
       console.error('Error fetching chemicals:', err);
