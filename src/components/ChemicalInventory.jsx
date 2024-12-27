@@ -69,6 +69,8 @@ const UsageModal = ({ chemical, isOpen, onClose, onConfirm }) => {
   );
 };
 
+import ChemicalHazardModal from './ChemicalHazardModal';
+
 const ChemicalInventory = () => {
   const [chemicals, setChemicals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +78,13 @@ const ChemicalInventory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedChemical, setSelectedChemical] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isHazardModalOpen, setIsHazardModalOpen] = useState(false);
+  const [selectedHazardChemical, setSelectedHazardChemical] = useState(null);
+
+  const handleHazardClick = (chemical) => {
+    setSelectedHazardChemical(chemical);
+    setIsHazardModalOpen(true);
+  };
 
   useEffect(() => {
     fetchChemicals();
@@ -195,18 +204,12 @@ const ChemicalInventory = () => {
             {filteredChemicals.map((chemical) => (
               <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
                 <td className="px-4 py-3">
-                  {chemical.sds_url ? (
-                    <a 
-                      href={chemical.sds_url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      {chemical.name}
-                    </a>
-                  ) : (
-                    chemical.name
-                  )}
+                  <button 
+                    onClick={() => handleHazardClick(chemical)}
+                    className="text-blue-600 hover:underline text-left"
+                  >
+                    {chemical.name}
+                  </button>
                 </td>
                 <td className="px-4 py-3 font-mono">{chemical.formula}</td>
                 <td className="px-4 py-3">{chemical.location}</td>
@@ -241,6 +244,17 @@ const ChemicalInventory = () => {
             setSelectedChemical(null);
           }}
           onConfirm={(amount) => updateQuantity(selectedChemical, amount)}
+        />
+      )}
+
+      {selectedHazardChemical && (
+        <ChemicalHazardModal
+          chemical={selectedHazardChemical}
+          isOpen={isHazardModalOpen}
+          onClose={() => {
+            setIsHazardModalOpen(false);
+            setSelectedHazardChemical(null);
+          }}
         />
       )}
     </div>
