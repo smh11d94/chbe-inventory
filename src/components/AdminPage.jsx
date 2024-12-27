@@ -21,10 +21,24 @@ const AdminPage = () => {
     try {
       setLoading(true);
       const response = await API.get('chbe-inventory-api', '/inventory');
-      setChemicals(response.body ? JSON.parse(response.body).data : []);
+      
+      // Ensure we're dealing with proper JSON data
+      let data;
+      if (typeof response.body === 'string') {
+        data = JSON.parse(response.body);
+      } else {
+        data = response.body;
+      }
+
+      // Ensure we have an array of chemicals
+      const chemicalsArray = Array.isArray(data) ? data : 
+                           Array.isArray(data.data) ? data.data : [];
+      
+      setChemicals(chemicalsArray);
     } catch (err) {
       console.error('Error fetching chemicals:', err);
       setError('Failed to load chemical inventory');
+      setChemicals([]); // Ensure chemicals is always an array
     } finally {
       setLoading(false);
     }
@@ -69,6 +83,12 @@ const AdminPage = () => {
       }
     }
   };
+
+  // Filter chemicals based on search term
+  const filteredChemicals = chemicals.filter(chemical => 
+    chemical.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    chemical.location.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -119,46 +139,40 @@ const AdminPage = () => {
             </tr>
           </thead>
           <tbody>
-            {chemicals
-              .filter(chemical => 
-                chemical.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                chemical.location.toLowerCase().includes(searchTerm.toLowerCase())
-              )
-              .map((chemical) => (
-                <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
-                  <td className="px-4 py-3">{chemical.name}</td>
-                  <td className="px-4 py-3 font-mono">{chemical.formula}</td>
-                  <td className="px-4 py-3">{chemical.location}</td>
-                  <td className="px-4 py-3">
-                    <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
-                      {chemical.current_quantity}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">{chemical.unit}</td>
-                  <td className="px-4 py-3 space-x-2">
-                    <button
-                      onClick={() => {
-                        setSelectedChemical(chemical);
-                        setIsRestockModalOpen(true);
-                      }}
-                      className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-                    >
-                      Restock
-                    </button>
-                    <button
-                      onClick={() => handleRemoveChemical(chemical.chemical_id)}
-                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
+            {filteredChemicals.map((chemical) => (
+              <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
+                <td className="px-4 py-3">{chemical.name}</td>
+                <td className="px-4 py-3 font-mono">{chemical.formula}</td>
+                <td className="px-4 py-3">{chemical.location}</td>
+                <td className="px-4 py-3">
+                  <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
+                    {chemical.current_quantity}
+                  </span>
+                </td>
+                <td className="px-4 py-3">{chemical.unit}</td>
+                <td className="px-4 py-3 space-x-2">
+                  <button
+                    onClick={() => {
+                      setSelectedChemical(chemical);
+                      setIsRestockModalOpen(true);
+                    }}
+                    className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                  >
+                    Restock
+                  </button>
+                  <button
+                    onClick={() => handleRemoveChemical(chemical.chemical_id)}
+                    className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
-      {/* Add Chemical Modal */}
       {isAddModalOpen && (
         <AddChemicalModal
           isOpen={isAddModalOpen}
@@ -167,7 +181,6 @@ const AdminPage = () => {
         />
       )}
 
-      {/* Restock Modal */}
       {isRestockModalOpen && selectedChemical && (
         <RestockModal
           chemical={selectedChemical}
