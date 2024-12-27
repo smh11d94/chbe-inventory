@@ -18,34 +18,33 @@ const ChemicalInventory = () => {
       const response = await API.get('chbe-inventory-api', '/inventory');
       console.log('Raw API Response:', response);
       
-      // Check if response is a string (CSV data)
-      if (typeof response === 'string') {
-        console.log('Received CSV data, parsing...');
-        // Parse CSV string into array of objects
-        const rows = response.trim().split('\n');
-        const headers = rows[0].split(',');
-        const data = rows.slice(1).map(row => {
-          const values = row.split(',');
-          return headers.reduce((obj, header, index) => {
-            obj[header.trim()] = values[index]?.trim() || '';
-            return obj;
-          }, {});
-        });
-        console.log('Parsed data:', data);
-        setChemicals(data);
-      }
-      // Check if response is already an array
-      else if (Array.isArray(response)) {
-        console.log('Received array data directly');
-        setChemicals(response);
-      }
-      // Check if response has a body property
-      else if (response.body) {
-        console.log('Received data in body property');
-        setChemicals(Array.isArray(response.body) ? response.body : []);
-      }
-      // Handle other response formats
-      else {
+      // Parse the nested JSON response
+      if (response.body) {
+        const parsedBody = typeof response.body === 'string' 
+          ? JSON.parse(response.body) 
+          : response.body;
+        
+        console.log('Parsed body:', parsedBody);
+        
+        if (parsedBody.data) {
+          // Parse CSV string into array of objects
+          const rows = parsedBody.data.trim().split('\\r\\n');
+          const headers = rows[0].split(',');
+          const data = rows.slice(1).map(row => {
+            const values = row.split(',');
+            return headers.reduce((obj, header, index) => {
+              obj[header.trim()] = values[index]?.trim() || '';
+              return obj;
+            }, {});
+          });
+          
+          console.log('Parsed chemical data:', data);
+          setChemicals(data);
+        } else {
+          console.error('No data property found in response');
+          setError('No inventory data found');
+        }
+      } else {
         console.error('Unexpected API response structure:', response);
         setError('Received unexpected data format from server');
       }
