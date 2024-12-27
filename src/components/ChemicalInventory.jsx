@@ -14,72 +14,64 @@ const ChemicalInventory = () => {
   const fetchChemicals = async () => {
     try {
       setLoading(true);
-      console.log('Fetching chemicals from S3...');
+      console.log('1. Starting API call...');
       const response = await API.get('chbe-inventory-api', '/inventory');
-      console.log('Raw API Response:', response);
+      console.log('2. Raw API Response:', response);
       
-      // Parse the nested JSON response
-      if (response.body) {
-        const parsedBody = typeof response.body === 'string' 
-          ? JSON.parse(response.body) 
+      if (!response) {
+        throw new Error('No response from API');
+      }
+
+      let parsedBody;
+      try {
+        // If response.body is a string, parse it, otherwise use it as is
+        parsedBody = typeof response.body === 'string' 
+          ? JSON.parse(response.body)
           : response.body;
-        
-        console.log('Parsed body:', parsedBody);
-        
-        if (parsedBody.data) {
-          // Parse CSV string into array of objects
-          const rows = parsedBody.data.trim().split('\\r\\n');
-          const headers = rows[0].split(',');
-          const data = rows.slice(1).map(row => {
-            const values = row.split(',');
-            return headers.reduce((obj, header, index) => {
-              obj[header.trim()] = values[index]?.trim() || '';
-              return obj;
-            }, {});
-          });
+        console.log('3. Parsed body:', parsedBody);
+      } catch (e) {
+        console.error('Error parsing response body:', e);
+        throw new Error('Failed to parse API response');
+      }
+
+      if (!parsedBody.data) {
+        throw new Error('No data found in response');
+      }
+
+      // Parse CSV data
+      try {
+        const rows = parsedBody.data.split('\\r\\n');
+        console.log('4. Split rows:', rows);
+
+        const headers = rows[0].split(',');
+        console.log('5. Headers:', headers);
+
+        const data = rows.slice(1).map(row => {
+          const values = row.split(',');
+          console.log('6. Processing row:', row);
+          console.log('7. Split values:', values);
           
-          console.log('Parsed chemical data:', data);
-          setChemicals(data);
-        } else {
-          console.error('No data property found in response');
-          setError('No inventory data found');
-        }
-      } else {
-        console.error('Unexpected API response structure:', response);
-        setError('Received unexpected data format from server');
+          const rowObject = {};
+          headers.forEach((header, index) => {
+            rowObject[header.trim()] = values[index]?.trim() || '';
+          });
+          console.log('8. Created row object:', rowObject);
+          return rowObject;
+        });
+
+        console.log('9. Final parsed data:', data);
+        setChemicals(data);
+        setError(null);
+      } catch (e) {
+        console.error('Error parsing CSV data:', e);
+        throw new Error('Failed to parse CSV data');
       }
     } catch (err) {
-      console.error('Error fetching chemicals:', err);
-      setError('Failed to load chemical inventory');
+      console.error('Error in fetchChemicals:', err);
+      setError(err.message || 'Failed to load chemical inventory');
     } finally {
       setLoading(false);
     }
-  };
-
-  const updateQuantity = async (id, newQuantity) => {
-    if (newQuantity < 0) {
-      setError('Quantity cannot be negative');
-      return;
-    }
-
-    try {
-      await API.put('chbe-inventory-api', `/inventory/${id}`, {
-        body: { quantity: newQuantity }
-      });
-      await fetchChemicals();
-      setError(null);
-    } catch (err) {
-      console.error('Error updating quantity:', err);
-      setError('Failed to update quantity');
-    }
-  };
-
-  const getHazardClass = (level) => {
-    const level_num = parseInt(level);
-    if (level_num >= 4) return 'bg-red-100 text-red-800';
-    if (level_num === 3) return 'bg-orange-100 text-orange-800';
-    if (level_num === 2) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-green-100 text-green-800';
   };
 
   const filteredChemicals = chemicals.filter(chemical =>
@@ -87,6 +79,8 @@ const ChemicalInventory = () => {
     chemical.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     chemical.formula?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  console.log('10. Filtered chemicals for rendering:', filteredChemicals);
 
   if (loading) {
     return (
@@ -127,58 +121,45 @@ const ChemicalInventory = () => {
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Unit</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Hazard Level</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Min. Quantity</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredChemicals.map((chemical) => (
-              <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
-                <td className="px-4 py-3">
-                  {chemical.sds_url ? (
-                    <a 
-                      href={chemical.sds_url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      {chemical.name}
-                    </a>
-                  ) : (
-                    chemical.name
-                  )}
-                </td>
-                <td className="px-4 py-3 font-mono">{chemical.formula}</td>
-                <td className="px-4 py-3">{chemical.location}</td>
-                <td className="px-4 py-3">
-                  <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
-                    {chemical.current_quantity}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{chemical.unit}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getHazardClass(chemical.hazard_level)}`}>
-                    Level {chemical.hazard_level}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{chemical.minimum_quantity}</td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => updateQuantity(chemical.chemical_id, Number(chemical.current_quantity) - 1)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      Use
-                    </button>
-                    <button
-                      onClick={() => updateQuantity(chemical.chemical_id, Number(chemical.current_quantity) + 1)}
-                      className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      Add
-                    </button>
-                  </div>
+            {filteredChemicals.length === 0 ? (
+              <tr>
+                <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
+                  No chemicals found
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredChemicals.map((chemical) => (
+                <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    {chemical.sds_url ? (
+                      <a 
+                        href={chemical.sds_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        {chemical.name}
+                      </a>
+                    ) : (
+                      chemical.name
+                    )}
+                  </td>
+                  <td className="px-4 py-3 font-mono">{chemical.formula}</td>
+                  <td className="px-4 py-3">{chemical.location}</td>
+                  <td className="px-4 py-3">
+                    <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
+                      {chemical.current_quantity}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{chemical.unit}</td>
+                  <td className="px-4 py-3">{chemical.hazard_level}</td>
+                  <td className="px-4 py-3">{chemical.minimum_quantity}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
