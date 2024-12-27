@@ -35,14 +35,9 @@ const AdminPage = () => {
       const chemical = chemicals.find((c) => c.chemical_id === chemicalId);
       const newQuantity = Number(chemical.current_quantity) + Number(amount);
       await API.put('chbe-inventory-api', `/inventory/${chemicalId}`, {
-        body: { 
-          quantity: newQuantity,
-          restock: {
-            amount: amount,
-            timestamp: new Date().toISOString()
-          }
-        }
+        body: { quantity: newQuantity }
       });
+      setIsRestockModalOpen(false);
       await fetchChemicals();
     } catch (err) {
       console.error('Error restocking chemical:', err);
@@ -55,6 +50,7 @@ const AdminPage = () => {
       await API.post('chbe-inventory-api', '/inventory', {
         body: newChemical
       });
+      setIsAddModalOpen(false);
       await fetchChemicals();
     } catch (err) {
       console.error('Error adding chemical:', err);
@@ -73,11 +69,6 @@ const AdminPage = () => {
       }
     }
   };
-
-  const filteredChemicals = chemicals.filter(chemical =>
-    chemical.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    chemical.location.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   if (loading) {
     return (
@@ -98,7 +89,7 @@ const AdminPage = () => {
           Add New Chemical
         </button>
       </div>
-      
+
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           {error}
@@ -111,7 +102,7 @@ const AdminPage = () => {
           placeholder="Search chemicals..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
+          className="w-full p-2 border rounded"
         />
       </div>
 
@@ -124,4 +115,72 @@ const AdminPage = () => {
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Location</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Quantity</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Unit</th>
-              <th className="px-4
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {chemicals
+              .filter(chemical => 
+                chemical.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                chemical.location.toLowerCase().includes(searchTerm.toLowerCase())
+              )
+              .map((chemical) => (
+                <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
+                  <td className="px-4 py-3">{chemical.name}</td>
+                  <td className="px-4 py-3 font-mono">{chemical.formula}</td>
+                  <td className="px-4 py-3">{chemical.location}</td>
+                  <td className="px-4 py-3">
+                    <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
+                      {chemical.current_quantity}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{chemical.unit}</td>
+                  <td className="px-4 py-3 space-x-2">
+                    <button
+                      onClick={() => {
+                        setSelectedChemical(chemical);
+                        setIsRestockModalOpen(true);
+                      }}
+                      className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                    >
+                      Restock
+                    </button>
+                    <button
+                      onClick={() => handleRemoveChemical(chemical.chemical_id)}
+                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Add Chemical Modal */}
+      {isAddModalOpen && (
+        <AddChemicalModal
+          isOpen={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
+          onAdd={handleAddChemical}
+        />
+      )}
+
+      {/* Restock Modal */}
+      {isRestockModalOpen && selectedChemical && (
+        <RestockModal
+          chemical={selectedChemical}
+          isOpen={isRestockModalOpen}
+          onClose={() => {
+            setIsRestockModalOpen(false);
+            setSelectedChemical(null);
+          }}
+          onRestock={handleRestock}
+        />
+      )}
+    </div>
+  );
+};
+
+export default AdminPage;
