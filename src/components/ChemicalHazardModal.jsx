@@ -38,26 +38,36 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
         }
 
         const ghsData = await ghsResponse.text();  // Get XML as text
-        console.log('GHS XML Data:', ghsData);
+        console.log('GHS XML Data:', ghsData);  // Log the XML to inspect
 
         // Step 3: Parse XML to extract SVG file URLs
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(ghsData, 'application/xml');
-        const svgFiles = [];
+        
+        // Log the structure of the XML to inspect
+        console.log('Parsed XML:', xmlDoc);
 
-        // Extract SVG URLs from the XML data
-        const svgElements = xmlDoc.getElementsByTagName('File');
-        for (let i = 0; i < svgElements.length; i++) {
-          const file = svgElements[i];
-          const fileUrl = file.textContent;
-          if (fileUrl && fileUrl.endsWith('.svg')) {
-            svgFiles.push(fileUrl);
+        // Look for the correct section under GHS Classification
+        const svgFiles = [];
+        const tocHeadings = xmlDoc.getElementsByTagName('TOCHeading');
+        for (let i = 0; i < tocHeadings.length; i++) {
+          const tocHeading = tocHeadings[i];
+          if (tocHeading.textContent === 'GHS Classification') {
+            // Now look for any files or images under this heading
+            const files = tocHeading.parentElement.getElementsByTagName('File');
+            for (let j = 0; j < files.length; j++) {
+              const file = files[j];
+              const fileUrl = file.textContent;
+              if (fileUrl && fileUrl.endsWith('.svg')) {
+                svgFiles.push(fileUrl);
+              }
+            }
           }
         }
 
         setSvgFiles(svgFiles);
 
-        // Optional: Extract GHS Classification statements or other data if needed
+        // Optional: Process and extract hazard statements if needed
         const processHazards = (xmlDoc) => {
           const hazards = {
             statements: [],
