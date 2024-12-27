@@ -1,6 +1,7 @@
 import { Amplify } from 'aws-amplify';
 import config from './aws-exports';
 import ChemicalInventory from './components/ChemicalInventory';
+import ErrorBoundary from './components/ErrorBoundary';
 
 Amplify.configure(config);
 
@@ -14,7 +15,9 @@ function App() {
       </header>
       <main>
         <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <ChemicalInventory />
+          <ErrorBoundary>
+            <ChemicalInventory />
+          </ErrorBoundary>
         </div>
       </main>
     </div>
