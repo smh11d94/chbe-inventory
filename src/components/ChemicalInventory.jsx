@@ -70,7 +70,6 @@ const UsageModal = ({ chemical, isOpen, onClose, onConfirm }) => {
   );
 };
 
-import ChemicalHazardModal from './ChemicalHazardModal';
 
 const ChemicalInventory = () => {
   const [chemicals, setChemicals] = useState([]);
