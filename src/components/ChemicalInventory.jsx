@@ -6,11 +6,7 @@ const ChemicalInventory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-// Temporary mock data for testing
-const MOCK_DATA = [
-  { id: '1', name: 'Test Chemical 1', quantity: 15, location: 'Lab A' },
-  { id: '2', name: 'Test Chemical 2', quantity: 8, location: 'Lab B' },
-];
+
   useEffect(() => {
     fetchChemicals();
   }, []);
@@ -18,16 +14,18 @@ const MOCK_DATA = [
   const fetchChemicals = async () => {
     try {
       setLoading(true);
-      console.log('Fetching chemicals...');
-      // Temporarily use mock data to verify rendering
-      console.log('Using mock data for testing');
-      setChemicals(MOCK_DATA);
+      console.log('Fetching chemicals from S3...');
+      const response = await API.get('chbe-inventory-api', '/inventory');
+      console.log('API Response:', response);
       
-      // Uncomment this when API is ready
-      // const response = await API.get('chbe-inventory-api', '/inventory');
-      // console.log('API Response:', response);
-      // setChemicals(response);
-      setError(null);
+      if (Array.isArray(response)) {
+        setChemicals(response);
+      } else if (response.body) {
+        setChemicals(Array.isArray(response.body) ? response.body : []);
+      } else {
+        console.error('Unexpected API response structure:', response);
+        setError('Received unexpected data format from server');
+      }
     } catch (err) {
       console.error('Error fetching chemicals:', err);
       setError('Failed to load chemical inventory');
@@ -46,7 +44,7 @@ const MOCK_DATA = [
       await API.put('chbe-inventory-api', `/inventory/${id}`, {
         body: { quantity: newQuantity }
       });
-      await fetchChemicals(); // Refresh the list
+      await fetchChemicals();
       setError(null);
     } catch (err) {
       console.error('Error updating quantity:', err);
@@ -54,9 +52,18 @@ const MOCK_DATA = [
     }
   };
 
+  const getHazardClass = (level) => {
+    const level_num = parseInt(level);
+    if (level_num >= 4) return 'bg-red-100 text-red-800';
+    if (level_num === 3) return 'bg-orange-100 text-orange-800';
+    if (level_num === 2) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-green-100 text-green-800';
+  };
+
   const filteredChemicals = chemicals.filter(chemical =>
     chemical.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    chemical.location?.toLowerCase().includes(searchTerm.toLowerCase())
+    chemical.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    chemical.formula?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -68,7 +75,7 @@ const MOCK_DATA = [
   }
 
   return (
-    <div className="p-4 max-w-6xl mx-auto">
+    <div className="p-4 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Chemical Inventory Management</h1>
       
       {error && (
@@ -80,8 +87,8 @@ const MOCK_DATA = [
       <div className="mb-4">
         <input
           type="text"
-          placeholder="Search chemicals or locations..."
-          value={searchTerm}
+          placeholder="Search by name, formula, or location..."
+          value={searchTterm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full p-2 border rounded-lg shadow-sm"
         />
@@ -92,31 +99,56 @@ const MOCK_DATA = [
           <thead>
             <tr className="bg-gray-50">
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Name</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Quantity</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Formula</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Location</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Quantity</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Unit</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Hazard Level</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Min. Quantity</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredChemicals.map((chemical) => (
-              <tr key={chemical.id} className="border-t border-gray-200 hover:bg-gray-50">
-                <td className="px-4 py-3">{chemical.name}</td>
+              <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
                 <td className="px-4 py-3">
-                  <span className={chemical.quantity < 10 ? 'text-red-600 font-medium' : ''}>
-                    {chemical.quantity}
+                  {chemical.sds_url ? (
+                    <a 
+                      href={chemical.sds_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      {chemical.name}
+                    </a>
+                  ) : (
+                    chemical.name
+                  )}
+                </td>
+                <td className="px-4 py-3 font-mono">{chemical.formula}</td>
+                <td className="px-4 py-3">{chemical.location}</td>
+                <td className="px-4 py-3">
+                  <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
+                    {chemical.current_quantity}
                   </span>
                 </td>
-                <td className="px-4 py-3">{chemical.location}</td>
+                <td className="px-4 py-3">{chemical.unit}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getHazardClass(chemical.hazard_level)}`}>
+                    Level {chemical.hazard_level}
+                  </span>
+                </td>
+                <td className="px-4 py-3">{chemical.minimum_quantity}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <button
-                      onClick={() => updateQuantity(chemical.id, chemical.quantity - 1)}
+                      onClick={() => updateQuantity(chemical.chemical_id, Number(chemical.current_quantity) - 1)}
                       className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
                     >
                       Use
                     </button>
                     <button
-                      onClick={() => updateQuantity(chemical.id, chemical.quantity + 1)}
+                      onClick={() => updateQuantity(chemical.chemical_id, Number(chemical.current_quantity) + 1)}
                       className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
                     >
                       Add
