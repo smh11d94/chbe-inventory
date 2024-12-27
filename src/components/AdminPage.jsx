@@ -1,3 +1,4 @@
+// src/components/AdminPage.jsx
 import React, { useState, useEffect } from 'react';
 import { API } from 'aws-amplify';
 import AddChemicalModal from './modals/AddChemicalModal';
@@ -34,7 +35,7 @@ const AdminPage = () => {
           throw new Error('Invalid data format received');
         }
       } else {
-        data = response.body;
+        data = response.body || [];
       }
 
       // Handle different data structures
@@ -50,6 +51,18 @@ const AdminPage = () => {
         chemicalsArray = [];
       }
 
+      console.log('Chemical array before setting:', chemicalsArray);
+      // Validate each chemical object
+      chemicalsArray = chemicalsArray.filter(chemical => {
+        const isValid = chemical && 
+                       typeof chemical === 'object' && 
+                       typeof chemical.name === 'string' &&
+                       typeof chemical.location === 'string';
+        if (!isValid) {
+          console.warn('Invalid chemical object found:', chemical);
+        }
+        return isValid;
+      });
       console.log('Final chemicals array:', chemicalsArray);
       setChemicals(chemicalsArray);
     } catch (err) {
@@ -79,6 +92,9 @@ const AdminPage = () => {
   const handleRestock = async (chemicalId, amount) => {
     try {
       const chemical = chemicals.find((c) => c.chemical_id === chemicalId);
+      if (!chemical) {
+        throw new Error('Chemical not found');
+      }
       const newQuantity = Number(chemical.current_quantity) + Number(amount);
       await API.put('chbe-inventory-api', `/inventory/${chemicalId}`, {
         body: { quantity: newQuantity }
@@ -87,7 +103,7 @@ const AdminPage = () => {
       await fetchChemicals();
     } catch (err) {
       console.error('Error restocking chemical:', err);
-      setError('Failed to restock chemical');
+      setError(`Failed to restock chemical: ${err.message}`);
     }
   };
 
@@ -98,15 +114,15 @@ const AdminPage = () => {
         await fetchChemicals();
       } catch (err) {
         console.error('Error removing chemical:', err);
-        setError('Failed to remove chemical');
+        setError(`Failed to remove chemical: ${err.message}`);
       }
     }
   };
 
-  // Filter chemicals based on search term
+  // Filter chemicals based on search term with safety checks
   const filteredChemicals = chemicals.filter(chemical => 
-    chemical.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    chemical.location.toLowerCase().includes(searchTerm.toLowerCase())
+    (chemical?.name?.toLowerCase()?.includes(searchTerm.toLowerCase()) || false) ||
+    (chemical?.location?.toLowerCase()?.includes(searchTerm.toLowerCase()) || false)
   );
 
   if (loading) {
