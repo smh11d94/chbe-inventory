@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { API } from 'aws-amplify';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const ChemicalInventory = () => {
   const [chemicals, setChemicals] = useState([]);
@@ -45,8 +44,8 @@ const ChemicalInventory = () => {
   };
 
   const filteredChemicals = chemicals.filter(chemical =>
-    chemical.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    chemical.location.toLowerCase().includes(searchTerm.toLowerCase())
+    chemical.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    chemical.location?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -62,9 +61,9 @@ const ChemicalInventory = () => {
       <h1 className="text-2xl font-bold mb-6">Chemical Inventory Management</h1>
       
       {error && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
       )}
 
       <div className="mb-4">
