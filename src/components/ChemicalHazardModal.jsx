@@ -1,61 +1,5 @@
 import React, { useState, useEffect } from 'react';
 
-// Map of hazard phrases to GHS pictograms
-const HAZARD_TO_GHS = {
-  // Explosive hazards -> GHS01
-  'explosive': 'GHS01',
-  'explosiv': 'GHS01',
-  'unstable explosive': 'GHS01',
-  
-  // Flammable hazards -> GHS02
-  'flammable': 'GHS02',
-  'pyrophoric': 'GHS02',
-  'catches fire': 'GHS02',
-  'heating may cause fire': 'GHS02',
-  
-  // Oxidizing hazards -> GHS03
-  'oxidizing': 'GHS03',
-  'oxidising': 'GHS03',
-  'may cause fire or explosion': 'GHS03',
-  'may intensify fire': 'GHS03',
-  
-  // Compressed gas -> GHS04
-  'contains gas under pressure': 'GHS04',
-  'compressed gas': 'GHS04',
-  'liquefied gas': 'GHS04',
-  'dissolved gas': 'GHS04',
-  
-  // Corrosive -> GHS05
-  'corrosive': 'GHS05',
-  'causes severe skin burns': 'GHS05',
-  'causes serious eye damage': 'GHS05',
-  
-  // Toxic -> GHS06
-  'fatal': 'GHS06',
-  'toxic': 'GHS06',
-  
-  // Harmful/Irritant -> GHS07
-  'harmful': 'GHS07',
-  'irritant': 'GHS07',
-  'irritating': 'GHS07',
-  'may cause respiratory irritation': 'GHS07',
-  'may cause drowsiness': 'GHS07',
-  'may cause allergic skin reaction': 'GHS07',
-  
-  // Health hazard -> GHS08
-  'carcinogen': 'GHS08',
-  'mutagen': 'GHS08',
-  'reproductive toxicity': 'GHS08',
-  'respiratory sensitizer': 'GHS08',
-  'target organ toxicity': 'GHS08',
-  'aspiration hazard': 'GHS08',
-  
-  // Environmental hazard -> GHS09
-  'aquatic': 'GHS09',
-  'environmental': 'GHS09',
-  'hazardous to the aquatic': 'GHS09'
-};
-
 const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -67,8 +11,9 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
       
       setLoading(true);
       setError(null);
+
       try {
-        // First get the CID
+        // Step 1: Get CID
         const cidResponse = await fetch(
           `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(chemical.name)}/cids/JSON`
         );
@@ -79,16 +24,49 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
         }
 
         const cid = cidData.IdentifierList.CID[0];
+        console.log('Found CID:', cid);
 
-        // Get hazard information
-        const hazardResponse = await fetch(
-          `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=GHS+Classification`
+        // Step 2: Get GHS Data
+        const ghsResponse = await fetch(
+          `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON/?heading=GHS%20Classification`
         );
-        const hazardData = await hazardResponse.json();
+        const ghsData = await ghsResponse.json();
 
-        // Process the hazard data
-        const hazards = processHazardData(hazardData);
+        // Extract hazard information
+        const processHazards = (data) => {
+          const hazards = {
+            statements: [],
+            signalWord: null
+          };
+
+          try {
+            // Find GHS Classification section
+            const ghsSection = data.Record.Section.find(
+              section => section.TOCHeading === "GHS Classification"
+            );
+
+            if (ghsSection?.Information) {
+              ghsSection.Information.forEach(info => {
+                info.Value?.StringWithMarkup?.forEach(item => {
+                  const text = item.String;
+                  if (text.startsWith('Signal Word:')) {
+                    hazards.signalWord = text.replace('Signal Word:', '').trim();
+                  } else if (text.includes('H')) {
+                    hazards.statements.push(text);
+                  }
+                });
+              });
+            }
+          } catch (e) {
+            console.error('Error processing hazard data:', e);
+          }
+
+          return hazards;
+        };
+
+        const hazards = processHazards(ghsData);
         setHazardInfo(hazards);
+
       } catch (err) {
         console.error('Error fetching hazard info:', err);
         setError(err.message);
@@ -99,52 +77,6 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
 
     fetchHazardInfo();
   }, [isOpen, chemical]);
-
-  const processHazardData = (data) => {
-    const hazards = {
-      pictograms: new Set(),
-      warnings: new Set()
-    };
-
-    try {
-      // Function to check text against hazard mappings
-      const findMatchingPictograms = (text) => {
-        const lowerText = text.toLowerCase();
-        for (const [hazardPhrase, ghsCode] of Object.entries(HAZARD_TO_GHS)) {
-          if (lowerText.includes(hazardPhrase)) {
-            hazards.pictograms.add(ghsCode);
-          }
-        }
-      };
-
-      // Navigate through sections to find hazard statements
-      const sections = data.Record.Section;
-      sections.forEach(section => {
-        if (section.TOCHeading.includes('GHS')) {
-          section.Section?.forEach(subSection => {
-            if (subSection.TOCHeading.includes('Hazard')) {
-              subSection.Information?.forEach(info => {
-                info.Value?.StringWithMarkup?.forEach(item => {
-                  if (item.String) {
-                    hazards.warnings.add(item.String);
-                    // Check the hazard statement for matching pictograms
-                    findMatchingPictograms(item.String);
-                  }
-                });
-              });
-            }
-          });
-        }
-      });
-    } catch (e) {
-      console.error('Error processing hazard data:', e);
-    }
-
-    return {
-      pictograms: Array.from(hazards.pictograms),
-      warnings: Array.from(hazards.warnings)
-    };
-  };
 
   if (!isOpen) return null;
 
@@ -174,38 +106,39 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
         )}
 
         {hazardInfo && !loading && (
-          <div className="space-y-6">
-            {hazardInfo.pictograms.length > 0 && (
-              <div>
-                <h3 className="font-semibold mb-3">GHS Pictograms</h3>
-                <div className="flex flex-wrap gap-4">
-                  {hazardInfo.pictograms.map((ghsNumber) => (
-                    <div key={ghsNumber} className="border rounded p-2 bg-white">
-                      <img
-                        src={`/ghs-pictograms/${ghsNumber}.svg`}
-                        alt={`GHS pictogram ${ghsNumber}`}
-                        className="w-24 h-24 object-contain"
-                      />
-                    </div>
-                  ))}
+          <div className="space-y-4">
+            {hazardInfo.signalWord && (
+              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                <div className="flex">
+                  <div className="ml-3">
+                    <p className="text-sm text-yellow-700">
+                      Signal Word: <span className="font-medium">{hazardInfo.signalWord}</span>
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
 
-            {hazardInfo.warnings.length > 0 && (
+            {hazardInfo.statements.length > 0 && (
               <div>
                 <h3 className="font-semibold mb-3">Hazard Statements</h3>
                 <ul className="list-disc pl-5 space-y-2">
-                  {hazardInfo.warnings.map((warning, index) => (
-                    <li key={index} className="text-sm">{warning}</li>
+                  {hazardInfo.statements.map((statement, index) => (
+                    <li key={index} className="text-sm">{statement}</li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {(!hazardInfo.statements.length && !hazardInfo.signalWord) && (
+              <div className="text-gray-600 text-center">
+                <p>No GHS hazard information available for this chemical.</p>
               </div>
             )}
           </div>
         )}
 
-        {!loading && !error && (!hazardInfo || (!hazardInfo.pictograms?.length && !hazardInfo.warnings?.length)) && (
+        {!loading && !error && !hazardInfo && (
           <div className="text-gray-600 text-center py-4">
             <p>No hazard information available for this chemical.</p>
             <p className="text-sm mt-2">Please consult the Safety Data Sheet (SDS) for safety information.</p>
