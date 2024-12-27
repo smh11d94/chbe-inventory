@@ -1,4 +1,3 @@
-// src/components/AdminPage.jsx
 import React, { useState, useEffect } from 'react';
 import { API } from 'aws-amplify';
 import AddChemicalModal from './modals/AddChemicalModal';
@@ -20,27 +19,60 @@ const AdminPage = () => {
   const fetchChemicals = async () => {
     try {
       setLoading(true);
+      console.log('Fetching chemicals...');
       const response = await API.get('chbe-inventory-api', '/inventory');
+      console.log('Raw response:', response);
       
-      // Ensure we're dealing with proper JSON data
+      // Parse the response body if it's a string
       let data;
       if (typeof response.body === 'string') {
-        data = JSON.parse(response.body);
+        try {
+          data = JSON.parse(response.body);
+          console.log('Parsed data:', data);
+        } catch (parseError) {
+          console.error('Error parsing response:', parseError);
+          throw new Error('Invalid data format received');
+        }
       } else {
         data = response.body;
       }
 
-      // Ensure we have an array of chemicals
-      const chemicalsArray = Array.isArray(data) ? data : 
-                           Array.isArray(data.data) ? data.data : [];
-      
+      // Handle different data structures
+      let chemicalsArray;
+      if (Array.isArray(data)) {
+        chemicalsArray = data;
+      } else if (Array.isArray(data.data)) {
+        chemicalsArray = data.data;
+      } else if (typeof data === 'object' && data !== null) {
+        // If it's an object, try to convert it to an array
+        chemicalsArray = Object.values(data);
+      } else {
+        chemicalsArray = [];
+      }
+
+      console.log('Final chemicals array:', chemicalsArray);
       setChemicals(chemicalsArray);
     } catch (err) {
       console.error('Error fetching chemicals:', err);
-      setError('Failed to load chemical inventory');
-      setChemicals([]); // Ensure chemicals is always an array
+      setError(`Failed to load chemical inventory: ${err.message}`);
+      setChemicals([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddChemical = async (newChemical) => {
+    try {
+      console.log('Adding new chemical:', newChemical);
+      const response = await API.post('chbe-inventory-api', '/inventory', {
+        body: newChemical
+      });
+      console.log('Add chemical response:', response);
+      setIsAddModalOpen(false);
+      await fetchChemicals();
+    } catch (err) {
+      console.error('Error adding chemical:', err);
+      setError(`Failed to add new chemical: ${err.message}`);
     }
   };
 
@@ -56,19 +88,6 @@ const AdminPage = () => {
     } catch (err) {
       console.error('Error restocking chemical:', err);
       setError('Failed to restock chemical');
-    }
-  };
-
-  const handleAddChemical = async (newChemical) => {
-    try {
-      await API.post('chbe-inventory-api', '/inventory', {
-        body: newChemical
-      });
-      setIsAddModalOpen(false);
-      await fetchChemicals();
-    } catch (err) {
-      console.error('Error adding chemical:', err);
-      setError('Failed to add new chemical');
     }
   };
 
@@ -133,42 +152,52 @@ const AdminPage = () => {
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Name</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Formula</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Location</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Quantity</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Current Quantity</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Min. Quantity</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Unit</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredChemicals.map((chemical) => (
-              <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
-                <td className="px-4 py-3">{chemical.name}</td>
-                <td className="px-4 py-3 font-mono">{chemical.formula}</td>
-                <td className="px-4 py-3">{chemical.location}</td>
-                <td className="px-4 py-3">
-                  <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
-                    {chemical.current_quantity}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{chemical.unit}</td>
-                <td className="px-4 py-3 space-x-2">
-                  <button
-                    onClick={() => {
-                      setSelectedChemical(chemical);
-                      setIsRestockModalOpen(true);
-                    }}
-                    className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-                  >
-                    Restock
-                  </button>
-                  <button
-                    onClick={() => handleRemoveChemical(chemical.chemical_id)}
-                    className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                  >
-                    Remove
-                  </button>
+            {filteredChemicals.length > 0 ? (
+              filteredChemicals.map((chemical) => (
+                <tr key={chemical.chemical_id} className="border-t border-gray-200 hover:bg-gray-50">
+                  <td className="px-4 py-3">{chemical.name}</td>
+                  <td className="px-4 py-3 font-mono">{chemical.formula}</td>
+                  <td className="px-4 py-3">{chemical.location}</td>
+                  <td className="px-4 py-3">
+                    <span className={Number(chemical.current_quantity) < Number(chemical.minimum_quantity) ? 'text-red-600 font-medium' : ''}>
+                      {chemical.current_quantity}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{chemical.minimum_quantity}</td>
+                  <td className="px-4 py-3">{chemical.unit}</td>
+                  <td className="px-4 py-3 space-x-2">
+                    <button
+                      onClick={() => {
+                        setSelectedChemical(chemical);
+                        setIsRestockModalOpen(true);
+                      }}
+                      className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                    >
+                      Restock
+                    </button>
+                    <button
+                      onClick={() => handleRemoveChemical(chemical.chemical_id)}
+                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
+                  {searchTerm ? 'No chemicals found matching your search.' : 'No chemicals in the inventory yet.'}
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
