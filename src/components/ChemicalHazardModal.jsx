@@ -34,7 +34,7 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
         // Step 2: Get GHS Data
         console.log('Fetching GHS Classification data for CID:', cid);
         const ghsResponse = await fetch(
-          `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON/?heading=GHS%20Classification`
+          `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON/?heading=Safety%20and%20Hazards`
         );
         if (!ghsResponse.ok) {
           throw new Error(`Error fetching GHS data: ${ghsResponse.status} - ${ghsResponse.statusText}`);
@@ -50,13 +50,13 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
           };
 
           try {
-            // Find GHS Classification section
-            const ghsSection = data.Record.Section.find(
-              section => section.TOCHeading === "GHS Classification"
+            // Find Safety and Hazards section
+            const safetySection = data.Record.Section.find(
+              section => section.TOCHeading === "Safety and Hazards"
             );
 
-            if (ghsSection?.Information) {
-              ghsSection.Information.forEach(info => {
+            if (safetySection?.Information) {
+              safetySection.Information.forEach(info => {
                 info.Value?.StringWithMarkup?.forEach(item => {
                   const text = item.String;
                   if (text.startsWith('Signal Word:')) {
