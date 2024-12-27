@@ -12,35 +12,63 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
       setLoading(true);
       setError(null);
       try {
-        // First, get the CID
-        const cidResponse = await fetch(
-          `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(chemical.name)}/cids/JSON`
-        );
-        
-        if (!cidResponse.ok) {
-          throw new Error('Failed to fetch chemical information');
-        }
-        
+        // Get CID first
+        const cidUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(chemical.name)}/property/IUPACName/JSON`;
+        const cidResponse = await fetch(cidUrl);
         const cidData = await cidResponse.json();
         
-        if (!cidData.IdentifierList?.CID?.[0]) {
+        if (!cidData?.PropertyTable?.Properties?.[0]?.CID) {
           throw new Error('Chemical not found in PubChem');
         }
 
-        const cid = cidData.IdentifierList.CID[0];
+        const cid = cidData.PropertyTable.Properties[0].CID;
 
-        // Then get the hazard information
-        const hazardResponse = await fetch(
-          `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=GHS+Classification`
-        );
-        
-        if (!hazardResponse.ok) {
-          throw new Error('Failed to fetch hazard information');
+        // Get GHS data using PUG View
+        const ghs_url = `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=GHS+Classification`;
+        const ghsResponse = await fetch(ghs_url);
+        const ghsData = await ghsResponse.json();
+
+        // Process hazard data
+        const hazards = {
+          pictograms: [],
+          warnings: [],
+          hazardClasses: []
+        };
+
+        // Navigate through sections
+        if (ghsData?.Record?.Section) {
+          ghsData.Record.Section.forEach(section => {
+            if (section.TOCHeading.includes('GHS')) {
+              section.Section?.forEach(subSection => {
+                // Get pictograms
+                if (subSection.TOCHeading.includes('Pictogram')) {
+                  subSection.Information?.forEach(info => {
+                    info.Value?.StringWithMarkup?.forEach(item => {
+                      item.Markup?.forEach(markup => {
+                        if (markup.URL) {
+                          hazards.pictograms.push(markup.URL);
+                        }
+                      });
+                    });
+                  });
+                }
+                
+                // Get hazard statements
+                if (subSection.TOCHeading.includes('Hazard')) {
+                  subSection.Information?.forEach(info => {
+                    info.Value?.StringWithMarkup?.forEach(item => {
+                      if (item.String && !hazards.warnings.includes(item.String)) {
+                        hazards.warnings.push(item.String);
+                      }
+                    });
+                  });
+                }
+              });
+            }
+          });
         }
-        
-        const hazardData = await hazardResponse.json();
-        const processedHazards = processHazardData(hazardData);
-        setHazardInfo(processedHazards);
+
+        setHazardInfo(hazards);
       } catch (err) {
         console.error('Error fetching hazard info:', err);
         setError(err.message);
@@ -51,56 +79,6 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
 
     fetchHazardInfo();
   }, [isOpen, chemical]);
-
-  const processHazardData = (data) => {
-    const hazards = {
-      pictograms: [],
-      warnings: []
-    };
-
-    try {
-      // Navigate through the sections to find GHS Classification
-      const sections = data.Record.Section.find(
-        section => section.TOCHeading === 'Safety and Hazards'
-      )?.Section || [];
-
-      const ghsSection = sections.find(
-        section => section.TOCHeading === 'GHS Classification'
-      );
-
-      if (ghsSection?.Section) {
-        // Find pictograms
-        const pictogramSection = ghsSection.Section.find(
-          section => section.TOCHeading === 'Pictogram(s)'
-        );
-
-        if (pictogramSection?.Information?.[0]?.Value?.StringWithMarkup) {
-          pictogramSection.Information[0].Value.StringWithMarkup.forEach(item => {
-            if (item.Markup?.[0]?.URL) {
-              hazards.pictograms.push(item.Markup[0].URL);
-            }
-          });
-        }
-
-        // Find hazard statements
-        const hazardSection = ghsSection.Section.find(
-          section => section.TOCHeading === 'GHS Hazard Statements'
-        );
-
-        if (hazardSection?.Information?.[0]?.Value?.StringWithMarkup) {
-          hazardSection.Information[0].Value.StringWithMarkup.forEach(item => {
-            if (item.String) {
-              hazards.warnings.push(item.String);
-            }
-          });
-        }
-      }
-    } catch (e) {
-      console.error('Error processing hazard data:', e);
-    }
-
-    return hazards;
-  };
 
   if (!isOpen) return null;
 
@@ -125,27 +103,28 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
 
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-            {error}
+            Error: {error}
           </div>
         )}
 
         {hazardInfo && !loading && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {hazardInfo.pictograms.length > 0 && (
               <div>
-                <h3 className="font-semibold mb-2">GHS Pictograms</h3>
+                <h3 className="font-semibold mb-3">GHS Pictograms</h3>
                 <div className="flex flex-wrap gap-4">
                   {hazardInfo.pictograms.map((url, index) => (
-                    <img
-                      key={index}
-                      src={url}
-                      alt="GHS pictogram"
-                      className="w-24 h-24 object-contain"
-                      onError={(e) => {
-                        console.error('Failed to load image:', url);
-                        e.target.style.display = 'none';
-                      }}
-                    />
+                    <div key={index} className="border rounded p-2">
+                      <img
+                        src={url}
+                        alt="GHS pictogram"
+                        className="w-24 h-24 object-contain"
+                        onError={(e) => {
+                          console.error('Failed to load image:', url);
+                          e.target.parentElement.style.display = 'none';
+                        }}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
@@ -153,8 +132,8 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
 
             {hazardInfo.warnings.length > 0 && (
               <div>
-                <h3 className="font-semibold mb-2">Hazard Statements</h3>
-                <ul className="list-disc pl-5 space-y-1">
+                <h3 className="font-semibold mb-3">Hazard Statements</h3>
+                <ul className="list-disc pl-5 space-y-2">
                   {hazardInfo.warnings.map((warning, index) => (
                     <li key={index} className="text-sm">{warning}</li>
                   ))}
@@ -162,9 +141,10 @@ const ChemicalHazardModal = ({ chemical, isOpen, onClose }) => {
               </div>
             )}
 
-            {hazardInfo.pictograms.length === 0 && hazardInfo.warnings.length === 0 && (
-              <div className="text-gray-600">
-                No hazard information available for this chemical in PubChem database.
+            {(!hazardInfo.pictograms.length && !hazardInfo.warnings.length) && (
+              <div className="text-gray-600 text-center py-4">
+                <p>Loading hazard information from PubChem...</p>
+                <p className="text-sm mt-2">Note: Some chemicals may not have GHS classification data available.</p>
               </div>
             )}
           </div>
