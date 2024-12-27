@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { API } from 'aws-amplify';
+import ChemicalHazardModal from './ChemicalHazardModal';
 
 const UsageModal = ({ chemical, isOpen, onClose, onConfirm }) => {
   const [amount, setAmount] = useState('');
